@@ -1,0 +1,4 @@
+repository "ronda_game/ronda_game@11270720643839@cloud"
+  path "/"
+    br "/main"
+    co "/main"

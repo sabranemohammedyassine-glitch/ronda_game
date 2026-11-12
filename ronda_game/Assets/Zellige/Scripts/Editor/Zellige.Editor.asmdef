@@ -1,0 +1,7 @@
+{
+    "name": "Zellige.Editor",
+    "rootNamespace": "Zellige.EditorTools",
+    "references": [],
+    "includePlatforms": ["Editor"],
+    "autoReferenced": true
+}

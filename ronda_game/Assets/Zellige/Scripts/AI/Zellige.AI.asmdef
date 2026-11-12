@@ -1,0 +1,7 @@
+{
+    "name": "Zellige.AI",
+    "rootNamespace": "Zellige.AI",
+    "references": ["Zellige.Core"],
+    "autoReferenced": true,
+    "noEngineReferences": true
+}

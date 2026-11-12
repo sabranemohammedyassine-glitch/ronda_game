@@ -1,0 +1,6 @@
+{
+    "name": "Zellige.Game",
+    "rootNamespace": "Zellige",
+    "references": ["Zellige.Core", "Zellige.AI", "Unity.TextMeshPro", "UnityEngine.UI"],
+    "autoReferenced": true
+}

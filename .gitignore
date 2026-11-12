@@ -1,2 +1,21 @@
 .claude
 Ronda_+Moroccan+Card+Game_6.1.1_APKPure.xapk
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Bb]uild/
+[Bb]uilds/
+[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.suo
+*.user
+.vs/
+*.apk
+*.aab
+
+# Python caches from the art generators
+__pycache__/
