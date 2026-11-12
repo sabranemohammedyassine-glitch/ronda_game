@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.UI;
 using Zellige.Core;
 
@@ -36,15 +35,16 @@ namespace Zellige.UI
     /// Loads artwork by name from Resources/Zellige (filled by the menu
     /// Zellige > Import Art from UI-Design). Returns null when a sprite is missing;
     /// callers then draw a flat placeholder, so art can be replaced without code changes.
+    /// Works in Edit Mode too, which is how the UI builder assigns sprites to the scene.
     /// </summary>
     public static class SpriteLibrary
     {
         private static readonly Dictionary<string, Sprite> Cache = new Dictionary<string, Sprite>();
-        private static Sprite circle;
+        private static Sprite runtimeCircle;
 
         public static Sprite Get(string path)
         {
-            if (!Cache.TryGetValue(path, out Sprite sprite))
+            if (!Cache.TryGetValue(path, out Sprite sprite) || sprite == null)
             {
                 sprite = Resources.Load<Sprite>("Zellige/" + path);
                 Cache[path] = sprite;
@@ -59,17 +59,25 @@ namespace Zellige.UI
 
         public static Sprite CardBack => Get("Cards/card_back");
 
-        /// <summary>A white anti-aliased disc, used for circular masks and round buttons.</summary>
-        public static Sprite Circle
+        /// <summary>
+        /// A white disc made in memory. Only used when the UI is built at runtime; the
+        /// editor builder saves the same disc as an asset so the scene can reference it.
+        /// </summary>
+        public static Sprite RuntimeCircle
         {
             get
             {
-                if (circle == null) circle = CreateDisc(256);
-                return circle;
+                if (runtimeCircle == null)
+                {
+                    Texture2D texture = CreateDiscTexture(256);
+                    runtimeCircle = Sprite.Create(texture, new Rect(0, 0, 256, 256), new Vector2(0.5f, 0.5f), 100f);
+                }
+                return runtimeCircle;
             }
         }
 
-        private static Sprite CreateDisc(int size)
+        /// <summary>A white anti-aliased disc on a transparent background.</summary>
+        public static Texture2D CreateDiscTexture(int size)
         {
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
             float radius = size / 2f - 1f;
@@ -85,11 +93,11 @@ namespace Zellige.UI
             }
             texture.SetPixels32(pixels);
             texture.Apply();
-            return Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            return texture;
         }
     }
 
-    /// <summary>Small helpers for building uGUI objects from code.</summary>
+    /// <summary>Small helpers for building uGUI objects from code (used by the UI builder).</summary>
     public static class UiKit
     {
         public static RectTransform Rect(string name, Transform parent, Vector2 position, Vector2 size)
@@ -145,58 +153,68 @@ namespace Zellige.UI
             return label;
         }
 
-        /// <summary>The gold primary button (or the secondary navy one) with a text label.</summary>
+        /// <summary>
+        /// Gives a label a dark outline. With a shared outline material (an asset, used
+        /// when building in the editor) the outline is saved with the scene; without
+        /// one, TextMeshPro makes a per-label material at runtime.
+        /// </summary>
+        public static void Outline(TextMeshProUGUI label, Material outlineMaterial, float width)
+        {
+            if (outlineMaterial != null)
+            {
+                label.fontSharedMaterial = outlineMaterial;
+            }
+            else
+            {
+                label.outlineWidth = width;
+                label.outlineColor = Palette.NavyDeep;
+            }
+        }
+
+        /// <summary>The gold primary button (or the secondary navy one) with a text label. Listeners are added by GameScreen.</summary>
         public static Button Button(string name, Transform parent, Vector2 position, Vector2 size, string text,
-            UnityAction onClick, bool primary = true)
+            out TextMeshProUGUI label, bool primary = true)
         {
             Sprite sprite = SpriteLibrary.Get(primary ? "UI/ui_btn_primary" : "UI/ui_btn_secondary");
             Image background = Image(name, parent, position, size, sprite, primary ? Palette.Gold : Palette.NavyLight, 1.3f);
             background.raycastTarget = true;
             var button = background.gameObject.AddComponent<Button>();
             button.targetGraphic = background;
-            button.onClick.AddListener(onClick);
-            TextMeshProUGUI label = Text("Label", background.transform, new Vector2(0f, 3f), size,
+            label = Text("Label", background.transform, new Vector2(0f, 3f), size,
                 text, size.y * 0.36f, primary ? Palette.Ink : Palette.Ivory);
             label.fontStyle = FontStyles.Bold;
             label.characterSpacing = 6f;
             return button;
         }
 
-        /// <summary>A round icon button: navy disc, silver rim, icon sprite (or a text fallback).</summary>
-        public static Button IconButton(string name, Transform parent, Vector2 position, float size,
-            string iconPath, string fallbackText, UnityAction onClick)
+        /// <summary>
+        /// A round icon button: navy disc, silver rim, icon sprite. When the icon art is
+        /// missing, <paramref name="fallbackLabel"/> shows a short word instead.
+        /// </summary>
+        public static Button IconButton(string name, Transform parent, Vector2 position, float size, Sprite circle,
+            Sprite iconSprite, string fallbackText, out Image icon, out TextMeshProUGUI fallbackLabel)
         {
-            Image rim = Image(name, parent, position, Vector2.one * size, SpriteLibrary.Circle, Palette.Silver);
+            Image rim = Image(name, parent, position, Vector2.one * size, circle, Palette.Silver);
             rim.color = Palette.Silver;
             rim.raycastTarget = true;
-            Image disc = Image("Disc", rim.transform, Vector2.zero, Vector2.one * (size - 6f), SpriteLibrary.Circle, Palette.Navy);
+            Image disc = Image("Disc", rim.transform, Vector2.zero, Vector2.one * (size - 6f), circle, Palette.NavyDeep);
             disc.color = Palette.NavyDeep;
-            Image icon = Image("Icon", rim.transform, Vector2.zero, Vector2.one * size * 0.55f, SpriteLibrary.Get(iconPath), Color.clear);
-            if (icon.sprite == null)
+            icon = Image("Icon", rim.transform, Vector2.zero, Vector2.one * size * 0.55f, iconSprite, Color.clear);
+            fallbackLabel = null;
+            if (iconSprite == null)
             {
-                Text("Fallback", rim.transform, Vector2.zero, Vector2.one * size, fallbackText, size * 0.3f, Palette.Ivory);
+                fallbackLabel = Text("Fallback", rim.transform, Vector2.zero, Vector2.one * size, fallbackText, size * 0.3f, Palette.Ivory);
             }
             var button = rim.gameObject.AddComponent<Button>();
             button.targetGraphic = rim;
-            button.onClick.AddListener(onClick);
             return button;
         }
 
-        /// <summary>Changes the icon of a button made by <see cref="IconButton"/>.</summary>
-        public static void SetIcon(Button button, string iconPath, string fallbackText)
-        {
-            Sprite sprite = SpriteLibrary.Get(iconPath);
-            Image icon = button.transform.Find("Icon").GetComponent<Image>();
-            icon.sprite = sprite;
-            icon.color = sprite != null ? Color.white : Color.clear;
-            Transform fallback = button.transform.Find("Fallback");
-            if (fallback != null) fallback.GetComponent<TextMeshProUGUI>().text = fallbackText;
-        }
-
         /// <summary>A square picture shown inside a circle (used for avatars).</summary>
-        public static Image CircularImage(string name, Transform parent, Vector2 position, float size, Sprite sprite, Color fallbackColor)
+        public static Image CircularImage(string name, Transform parent, Vector2 position, float size, Sprite circle,
+            Sprite sprite, Color fallbackColor)
         {
-            Image mask = Image(name, parent, position, Vector2.one * size, SpriteLibrary.Circle, Color.white);
+            Image mask = Image(name, parent, position, Vector2.one * size, circle, Color.white);
             mask.color = Color.white;
             mask.gameObject.AddComponent<Mask>().showMaskGraphic = false;
             return Image("Picture", mask.transform, Vector2.zero, Vector2.one * size, sprite, fallbackColor);

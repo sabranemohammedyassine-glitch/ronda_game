@@ -3,19 +3,20 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Zellige.Core;
 
 namespace Zellige.UI
 {
     /// <summary>
-    /// The match screen: builds the uGUI layout from code and animates the engine's
-    /// events. It displays what it is told and contains no game rules.
-    /// Layout follows UI-Design/Generated/mockup_game_screen.png on a 1920x1080
-    /// canvas; positions are relative to the screen centre.
+    /// The match screen. Its objects are authored in Game.unity (built by
+    /// Zellige > Build or Refresh Game UI, see GameScreenBuilder.cs) and referenced
+    /// below; this class wires the buttons and animates the engine's events.
+    /// It displays what it is told and contains no game rules.
+    /// Cards are positioned from the "Card Areas" objects, so moving those in the
+    /// editor moves where the cards go.
     /// </summary>
-    public sealed class GameScreen : MonoBehaviour
+    public sealed partial class GameScreen : MonoBehaviour
     {
         public const int HumanSeat = 0;
         public const int OpponentSeat = 1;
@@ -28,40 +29,68 @@ namespace Zellige.UI
         private const float DeckScale = 0.85f;
         private const float PileScale = 0.3f;
         private const float MoveTime = 0.28f;
-
-        // Layout (canvas units, centre origin).
-        private static readonly Vector2[] PanelPositions = { new Vector2(-648f, -381f), new Vector2(-648f, 384f) };
-        private static readonly Vector2 PanelSize = new Vector2(425f, 132f);
-        private static readonly Vector2 DeckPosition = new Vector2(-700f, 23f);
-        private static readonly Vector2 ScoreboardPosition = new Vector2(705f, 232f);
-        private const float TableY = 10f;
-        private const float TableMaxSpan = 1060f;
         private const float TableSpacing = 150f;
-        private const float HumanHandY = -330f;
-        private const float OpponentHandY = 373f;
+        private const float HumanHandSpacing = 182f;
+        private const float OpponentHandSpacing = 84f;
+
+        /// <summary>The widgets of one player's panel.</summary>
+        [Serializable]
+        private sealed class PlayerPanel
+        {
+            public Image TurnRing;
+            public TextMeshProUGUI Role;
+            public TextMeshProUGUI Captured;
+            [Tooltip("Where captured cards fly to.")]
+            public RectTransform PileTarget;
+            public GameObject DealerChip;
+            [NonSerialized] public int CapturedCount;
+        }
+
+        [Header("Card layout")]
+        [SerializeField] private RectTransform cardLayer;
+        [SerializeField] private RectTransform tableArea;
+        [SerializeField] private RectTransform humanHandArea;
+        [SerializeField] private RectTransform opponentHandArea;
+        [SerializeField] private RectTransform deck;
+        [SerializeField] private CardView cardTemplate;
+
+        [Header("Players and score (index 0 = you, 1 = opponent)")]
+        [SerializeField] private PlayerPanel[] panels = new PlayerPanel[2];
+        [SerializeField] private TextMeshProUGUI[] scoreLabels = new TextMeshProUGUI[2];
+        [SerializeField] private TextMeshProUGUI deckLabel;
+        [SerializeField] private TextMeshProUGUI hintLabel;
+
+        [Header("Call-out banner")]
+        [SerializeField] private RectTransform callout;
+        [SerializeField] private TextMeshProUGUI calloutTitle;
+        [SerializeField] private TextMeshProUGUI calloutDetail;
+
+        [Header("Buttons")]
+        [SerializeField] private Button backgroundButton;
+        [SerializeField] private Button announceButton;
+        [SerializeField] private TextMeshProUGUI announceLabel;
+        [SerializeField] private Button soundButton;
+        [SerializeField] private Image soundIcon;
+        [SerializeField] private TextMeshProUGUI soundFallbackLabel;
+        [SerializeField] private Sprite soundOnIcon;
+        [SerializeField] private Sprite soundOffIcon;
+        [SerializeField] private Button newGameButton;
+
+        [Header("Result screen")]
+        [SerializeField] private GameObject resultOverlay;
+        [SerializeField] private Image resultIllustration;
+        [SerializeField] private Sprite victoryIllustration;
+        [SerializeField] private Sprite defeatIllustration;
+        [SerializeField] private TextMeshProUGUI resultTitle;
+        [SerializeField] private TextMeshProUGUI resultScore;
+        [SerializeField] private Button playAgainButton;
+
+        [Header("Audio")]
+        [SerializeField] private SoundFx sound;
 
         private readonly Dictionary<Card, CardView> views = new Dictionary<Card, CardView>();
         private readonly List<CardView>[] hands = { new List<CardView>(), new List<CardView>() };
         private readonly List<CardView> tableCards = new List<CardView>();
-        private readonly PlayerPanel[] panels = new PlayerPanel[2];
-        private readonly TextMeshProUGUI[] scoreLabels = new TextMeshProUGUI[2];
-
-        private RectTransform cardLayer;
-        private GameObject deckImage;
-        private TextMeshProUGUI deckLabel;
-        private TextMeshProUGUI hintLabel;
-        private RectTransform callout;
-        private Image calloutBackground;
-        private TextMeshProUGUI calloutTitle;
-        private TextMeshProUGUI calloutDetail;
-        private GameObject announceButton;
-        private TextMeshProUGUI announceLabel;
-        private Button soundButton;
-        private GameObject resultOverlay;
-        private Image resultIllustration;
-        private TextMeshProUGUI resultTitle;
-        private TextMeshProUGUI resultScore;
-        private SoundFx sound;
         private CardView selected;
         private int activeSeat = -1;
 
@@ -74,208 +103,42 @@ namespace Zellige.UI
 
         public CardView Selected => selected;
 
-        /// <summary>The widgets of one player's panel.</summary>
-        private sealed class PlayerPanel
+        private void Awake()
         {
-            public Image TurnRing;
-            public TextMeshProUGUI Role;
-            public TextMeshProUGUI Captured;
-            public GameObject DealerChip;
-            public int CapturedCount;
-        }
-
-        // ---------- Construction ----------
-
-        public static GameScreen Create()
-        {
-            if (FindObjectOfType<EventSystem>() == null)
+            if (cardTemplate == null || cardLayer == null || panels == null || panels.Length != 2 || panels[0].TurnRing == null)
             {
-                new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+                Debug.LogError("Zellige: the Game UI is incomplete. Run the menu Zellige > Build or Refresh Game UI.", this);
+                enabled = false;
+                return;
             }
 
-            var canvasObject = new GameObject("Zellige Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            var canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            var scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            // Expand keeps the whole 1920x1080 layout visible on any aspect ratio;
-            // the background is enlarged to cover the extra space.
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
-
-            var screen = canvasObject.AddComponent<GameScreen>();
-            screen.sound = canvasObject.AddComponent<SoundFx>();
-            screen.Build();
-            return screen;
-        }
-
-        private void Build()
-        {
-            Transform root = transform;
-
-            Image background = UiKit.Image("Background", root, Vector2.zero, new Vector2(1920f, 1080f),
-                SpriteLibrary.Get("UI/bg_table_main"), Palette.Navy);
-            var fitter = background.gameObject.AddComponent<AspectRatioFitter>();
-            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            fitter.aspectRatio = 1920f / 1080f;
-            background.raycastTarget = true;
-            var backgroundButton = background.gameObject.AddComponent<Button>();
-            backgroundButton.transition = Selectable.Transition.None;
+            cardTemplate.gameObject.SetActive(false);
             backgroundButton.onClick.AddListener(() => BackgroundClicked?.Invoke());
-
-            BuildPlayerPanel(root, HumanSeat);
-            BuildPlayerPanel(root, OpponentSeat);
-            BuildScoreboard(root);
-            BuildDeck(root);
-
-            cardLayer = UiKit.Rect("Cards", root, Vector2.zero, Vector2.zero);
-
-            hintLabel = UiKit.Text("Hint", root, new Vector2(0f, -126f), new Vector2(1000f, 40f), "", 26f,
-                Palette.WithAlpha(Palette.Silver, 0.9f));
-
-            BuildCallout(root);
-
-            Button announce = UiKit.Button("Announce Button", root, new Vector2(708f, -377f), new Vector2(300f, 84f),
-                "RONDA!", () => AnnounceClicked?.Invoke());
-            announceButton = announce.gameObject;
-            announceLabel = announce.GetComponentInChildren<TextMeshProUGUI>();
-            announceButton.SetActive(false);
-
-            soundButton = UiKit.IconButton("Sound Button", root, new Vector2(748f, 412f), 72f,
-                "UI/icon_sound_on", "Sound", ToggleSound);
-            UiKit.IconButton("New Game Button", root, new Vector2(828f, 412f), 72f,
-                "UI/icon_restart", "New", () => NewGameClicked?.Invoke());
-
-            BuildResultOverlay(root);
-        }
-
-        private void BuildPlayerPanel(Transform root, int seat)
-        {
-            var panel = new PlayerPanel();
-            panels[seat] = panel;
-
-            Image body = UiKit.Image("Player Panel " + seat, root, PanelPositions[seat], PanelSize,
-                SpriteLibrary.Get("UI/ui_panel"), Palette.WithAlpha(Palette.NavyLight, 0.9f), 1.4f);
-            Transform t = body.transform;
-            var avatarPosition = new Vector2(-142f, 0f);
-
-            panel.TurnRing = UiKit.Image("Turn Ring", t, avatarPosition, new Vector2(150f, 150f),
-                SpriteLibrary.Get("UI/ui_turn_ring"), Palette.Orange);
-            panel.TurnRing.enabled = false;
-            UiKit.CircularImage("Avatar", t, avatarPosition, 92f,
-                SpriteLibrary.Get(seat == HumanSeat ? "UI/avatar_01" : "UI/avatar_02"), Palette.Silver);
-            UiKit.Image("Avatar Frame", t, avatarPosition, new Vector2(116f, 116f), SpriteLibrary.Get("UI/frame_avatar"), Color.clear);
-
-            TextMeshProUGUI name = UiKit.Text("Name", t, new Vector2(4f, 18f), new Vector2(150f, 48f),
-                PlayerNames[seat], 38f, Palette.Ivory, TextAlignmentOptions.Left);
-            name.fontStyle = FontStyles.Bold;
-            panel.Role = UiKit.Text("Role", t, new Vector2(4f, -26f), new Vector2(150f, 30f),
-                "", 19f, Palette.Silver, TextAlignmentOptions.Left);
-            panel.Role.characterSpacing = 8f;
-
-            Image capsule = UiKit.Image("Captured Capsule", t, new Vector2(136f, 8f), new Vector2(106f, 50f),
-                SpriteLibrary.Get("UI/ui_score_capsule"), Palette.NavyDeep);
-            panel.Captured = UiKit.Text("Captured", capsule.transform, new Vector2(0f, 1f), new Vector2(106f, 50f), "0", 32f, Palette.Gold);
-            panel.Captured.fontStyle = FontStyles.Bold;
-            UiKit.Text("Captured Caption", t, new Vector2(136f, -36f), new Vector2(120f, 24f), "CAPTURED", 14f, Palette.Silver)
-                .characterSpacing = 6f;
-
-            Image chip = UiKit.Image("Dealer Chip", t, avatarPosition + new Vector2(42f, 42f), new Vector2(38f, 38f),
-                SpriteLibrary.Get("UI/ui_dealer_chip"), Palette.Gold);
-            if (chip.sprite == null)
-            {
-                chip.sprite = SpriteLibrary.Circle;
-                UiKit.Text("D", chip.transform, new Vector2(0f, 1f), new Vector2(38f, 38f), "D", 22f, Palette.Ink).fontStyle = FontStyles.Bold;
-            }
-            panel.DealerChip = chip.gameObject;
-            panel.DealerChip.SetActive(false);
-        }
-
-        private void BuildScoreboard(Transform root)
-        {
-            Image board = UiKit.Image("Scoreboard", root, ScoreboardPosition, new Vector2(330f, 220f),
-                SpriteLibrary.Get("UI/ui_panel"), Palette.WithAlpha(Palette.NavyLight, 0.9f), 1.4f);
-            Transform t = board.transform;
-            UiKit.Text("Title", t, new Vector2(0f, 80f), new Vector2(300f, 30f), "SCORE", 22f, Palette.Silver).characterSpacing = 12f;
-            UiKit.Image("Divider", t, new Vector2(0f, 60f), new Vector2(260f, 2f), null, Palette.WithAlpha(Palette.Silver, 0.35f));
-
-            for (int seat = 0; seat < 2; seat++)
-            {
-                float y = seat == HumanSeat ? 20f : -40f;
-                UiKit.Text("Name " + seat, t, new Vector2(-55f, y), new Vector2(180f, 50f),
-                    PlayerNames[seat], 34f, Palette.Ivory, TextAlignmentOptions.Left).fontStyle = FontStyles.Bold;
-                Image capsule = UiKit.Image("Capsule " + seat, t, new Vector2(88f, y), new Vector2(100f, 50f),
-                    SpriteLibrary.Get("UI/ui_score_capsule"), Palette.NavyDeep);
-                scoreLabels[seat] = UiKit.Text("Score", capsule.transform, new Vector2(0f, 1f), new Vector2(100f, 50f), "0", 34f, Palette.Gold);
-                scoreLabels[seat].fontStyle = FontStyles.Bold;
-            }
-            UiKit.Text("Target", t, new Vector2(0f, -86f), new Vector2(300f, 28f), "First to 41", 20f, Palette.Silver);
-        }
-
-        private void BuildDeck(Transform root)
-        {
-            deckImage = UiKit.Image("Deck", root, DeckPosition, CardView.BaseSize * DeckScale,
-                SpriteLibrary.CardBack, Palette.NavyLight).gameObject;
-            Image capsule = UiKit.Image("Deck Capsule", root, DeckPosition + new Vector2(0f, -164f), new Vector2(112f, 50f),
-                SpriteLibrary.Get("UI/ui_score_capsule"), Palette.NavyDeep);
-            deckLabel = UiKit.Text("Deck Count", capsule.transform, new Vector2(0f, 1f), new Vector2(112f, 50f), "", 32f, Palette.Ivory);
-            deckLabel.fontStyle = FontStyles.Bold;
-            UiKit.Text("Deck Caption", root, DeckPosition + new Vector2(0f, -212f), new Vector2(160f, 30f), "DECK", 20f, Palette.Silver)
-                .characterSpacing = 12f;
-        }
-
-        private void BuildCallout(Transform root)
-        {
-            callout = UiKit.Rect("Callout", root, new Vector2(0f, 205f), new Vector2(1100f, 170f));
-            Sprite banner = SpriteLibrary.Get("UI/ui_callout");
-            calloutBackground = UiKit.Image("Banner", callout, new Vector2(0f, 22f), new Vector2(820f, 128f), banner, Color.clear, 1f);
-            calloutBackground.enabled = banner != null;
-
-            // The title must stay between the banner's ornamented ends.
-            calloutTitle = UiKit.Text("Title", callout, new Vector2(0f, 24f), new Vector2(560f, 96f), "", 76f, Palette.Gold);
-            calloutTitle.fontStyle = FontStyles.Bold;
-            calloutTitle.enableAutoSizing = true;
-            calloutTitle.fontSizeMin = 36f;
-            calloutTitle.fontSizeMax = 76f;
-            calloutTitle.enableWordWrapping = false;
-            calloutTitle.outlineWidth = 0.18f;
-            calloutTitle.outlineColor = Palette.NavyDeep;
-            calloutDetail = UiKit.Text("Detail", callout, new Vector2(0f, -48f), new Vector2(1100f, 44f), "", 30f, Palette.Ivory);
-            calloutDetail.outlineWidth = 0.2f;
-            calloutDetail.outlineColor = Palette.NavyDeep;
-            callout.gameObject.SetActive(false);
-        }
-
-        private void BuildResultOverlay(Transform root)
-        {
-            Image dim = UiKit.Image("Result Overlay", root, Vector2.zero, Vector2.zero, null, new Color(0.02f, 0.04f, 0.1f, 0.75f));
-            UiKit.Stretch(dim.rectTransform);
-            dim.raycastTarget = true; // blocks clicks on the table behind
-            resultOverlay = dim.gameObject;
-
-            Sprite dialog = SpriteLibrary.Get("UI/ui_dialog") ?? SpriteLibrary.Get("UI/ui_panel");
-            Image panel = UiKit.Image("Panel", dim.transform, Vector2.zero, new Vector2(820f, 600f), dialog, Palette.NavyLight, 1f);
-            resultIllustration = UiKit.Image("Illustration", panel.transform, new Vector2(0f, 135f), new Vector2(416f, 260f), null, Color.clear);
-            resultTitle = UiKit.Text("Title", panel.transform, Vector2.zero, new Vector2(760f, 110f), "", 88f, Palette.Gold);
-            resultTitle.fontStyle = FontStyles.Bold;
-            resultTitle.characterSpacing = 6f;
-            resultScore = UiKit.Text("Score", panel.transform, Vector2.zero, new Vector2(760f, 60f), "", 40f, Palette.Ivory);
-            UiKit.Button("Play Again", panel.transform, new Vector2(0f, -205f), new Vector2(360f, 96f),
-                "PLAY AGAIN", () => NewGameClicked?.Invoke());
-            resultOverlay.SetActive(false);
+            announceButton.onClick.AddListener(() => AnnounceClicked?.Invoke());
+            soundButton.onClick.AddListener(ToggleSound);
+            newGameButton.onClick.AddListener(() => NewGameClicked?.Invoke());
+            playAgainButton.onClick.AddListener(() => NewGameClicked?.Invoke());
         }
 
         // ---------- Layout ----------
+
+        /// <summary>Position of any UI object in the card layer's coordinates (works whatever its anchors).</summary>
+        private Vector2 LocalPosition(RectTransform target)
+        {
+            return cardLayer.InverseTransformPoint(target.position);
+        }
 
         /// <summary>Table cards sit in one row sorted by rank, so chains read left to right.</summary>
         private void LayoutTable(float duration)
         {
             tableCards.Sort((a, b) => Ranks.IndexOf(a.Card.Rank).CompareTo(Ranks.IndexOf(b.Card.Rank)));
+            Vector2 center = LocalPosition(tableArea);
+            float maxSpan = Mathf.Max(0f, tableArea.rect.width - CardView.BaseSize.x * TableScale);
             int count = tableCards.Count;
-            float spacing = count > 1 ? Mathf.Min(TableSpacing, TableMaxSpan / (count - 1)) : 0f;
+            float spacing = count > 1 ? Mathf.Min(TableSpacing, maxSpan / (count - 1)) : 0f;
             for (int i = 0; i < count; i++)
             {
-                var target = new Vector2((i - (count - 1) / 2f) * spacing, TableY);
+                Vector2 target = center + new Vector2((i - (count - 1) / 2f) * spacing, 0f);
                 tableCards[i].Rect.SetSiblingIndex(i);
                 StartCoroutine(Move(tableCards[i].Rect, target, TableScale, 0f, duration));
             }
@@ -292,20 +155,28 @@ namespace Zellige.UI
             }
         }
 
-        /// <summary>Hands are drawn as a gentle fan.</summary>
-        private static void GetHandSlot(int seat, int index, int count, out Vector2 position, out float angle)
+        /// <summary>Hands are drawn as a gentle fan around their area's centre.</summary>
+        private void GetHandSlot(int seat, int index, int count, out Vector2 position, out float angle)
         {
             float offset = index - (count - 1) / 2f;
             if (seat == HumanSeat)
             {
-                position = new Vector2(offset * 182f, HumanHandY - offset * offset * 7f);
+                position = LocalPosition(humanHandArea) + new Vector2(offset * HumanHandSpacing, -offset * offset * 7f);
                 angle = -offset * 4f;
             }
             else
             {
-                position = new Vector2(offset * 84f, OpponentHandY + offset * offset * 4f);
+                position = LocalPosition(opponentHandArea) + new Vector2(offset * OpponentHandSpacing, offset * offset * 4f);
                 angle = offset * 4f;
             }
+        }
+
+        private CardView CreateCard(Card card)
+        {
+            CardView view = Instantiate(cardTemplate, cardLayer);
+            view.gameObject.SetActive(true);
+            view.Init(card, v => CardClicked?.Invoke(v));
+            return view;
         }
 
         // ---------- State shown outside animations ----------
@@ -330,7 +201,7 @@ namespace Zellige.UI
             SetActiveSeat(-1);
             SetDeckCount(Deck.Size);
             callout.gameObject.SetActive(false);
-            announceButton.SetActive(false);
+            announceButton.gameObject.SetActive(false);
             resultOverlay.SetActive(false);
             cardLayer.gameObject.SetActive(true);
             hintLabel.text = "";
@@ -356,7 +227,7 @@ namespace Zellige.UI
         /// <summary>Shows the announce button with the given label, or hides it when the label is null.</summary>
         public void SetAnnounceButton(string text)
         {
-            announceButton.SetActive(text != null);
+            announceButton.gameObject.SetActive(text != null);
             if (text != null) announceLabel.text = text;
         }
 
@@ -381,7 +252,7 @@ namespace Zellige.UI
         private void SetDeckCount(int count)
         {
             deckLabel.text = count.ToString();
-            deckImage.SetActive(count > 0);
+            deck.gameObject.SetActive(count > 0);
         }
 
         private void RefreshCaptured()
@@ -392,7 +263,10 @@ namespace Zellige.UI
         private void ToggleSound()
         {
             sound.Muted = !sound.Muted;
-            UiKit.SetIcon(soundButton, sound.Muted ? "UI/icon_sound_off" : "UI/icon_sound_on", sound.Muted ? "Off" : "Sound");
+            Sprite icon = sound.Muted ? soundOffIcon : soundOnIcon;
+            soundIcon.sprite = icon;
+            soundIcon.color = icon != null ? Color.white : Color.clear;
+            if (soundFallbackLabel != null) soundFallbackLabel.text = sound.Muted ? "Off" : "Sound";
         }
 
         private void Update()
@@ -428,8 +302,8 @@ namespace Zellige.UI
                 for (int seat = 0; seat < 2; seat++)
                 {
                     if (i >= e.Hands[seat].Count) continue;
-                    CardView view = CardView.Create(cardLayer, e.Hands[seat][i], v => CardClicked?.Invoke(v));
-                    view.Rect.anchoredPosition = DeckPosition;
+                    CardView view = CreateCard(e.Hands[seat][i]);
+                    view.Rect.anchoredPosition = LocalPosition(deck);
                     view.Rect.localScale = Vector3.one * DeckScale;
                     views[view.Card] = view;
                     hands[seat].Add(view);
@@ -486,10 +360,11 @@ namespace Zellige.UI
 
         private IEnumerator SweepToPile(List<CardView> cards, int seat)
         {
+            Vector2 pile = LocalPosition(panels[seat].PileTarget);
             foreach (CardView card in cards)
             {
                 tableCards.Remove(card);
-                StartCoroutine(Move(card.Rect, PanelPositions[seat] + new Vector2(136f, 8f), PileScale, 0f, 0.35f));
+                StartCoroutine(Move(card.Rect, pile, PileScale, 0f, 0.35f));
             }
             yield return new WaitForSeconds(0.37f);
             foreach (CardView card in cards)
@@ -573,17 +448,19 @@ namespace Zellige.UI
 
             bool won = e.Winner == HumanSeat;
             sound.PlayResult(won);
-            resultIllustration.sprite = SpriteLibrary.Get(won ? "UI/illus_victory" : "UI/illus_defeat");
-            bool hasIllustration = resultIllustration.sprite != null;
-            resultIllustration.enabled = hasIllustration;
-            resultIllustration.color = Color.white;
-            resultIllustration.preserveAspect = true;
+            Sprite illustration = won ? victoryIllustration : defeatIllustration;
+            resultIllustration.sprite = illustration;
+            resultIllustration.enabled = illustration != null;
+            if (illustration == null)
+            {
+                // No art: move the text up into the empty space.
+                resultTitle.rectTransform.anchoredPosition = new Vector2(0f, 100f);
+                resultScore.rectTransform.anchoredPosition = new Vector2(0f, 10f);
+            }
 
             resultTitle.text = won ? "VICTORY" : "DEFEAT";
             resultTitle.color = won ? Palette.Gold : Palette.Silver;
-            resultTitle.rectTransform.anchoredPosition = new Vector2(0f, hasIllustration ? -40f : 100f);
             resultScore.text = "You " + e.Scores[0] + "   –   " + e.Scores[1] + " " + PlayerNames[OpponentSeat];
-            resultScore.rectTransform.anchoredPosition = new Vector2(0f, hasIllustration ? -115f : 10f);
             cardLayer.gameObject.SetActive(false); // the dialog is slightly translucent
             resultOverlay.transform.SetAsLastSibling();
             resultOverlay.SetActive(true);

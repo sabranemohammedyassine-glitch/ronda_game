@@ -6,6 +6,7 @@ namespace Zellige.UI
     /// Short sound effects synthesised at start-up (no audio files needed, so nothing
     /// to license). Replace any clip with a recorded one later without touching callers.
     /// </summary>
+    [RequireComponent(typeof(AudioSource))]
     public sealed class SoundFx : MonoBehaviour
     {
         private const int SampleRate = 44100;
@@ -26,7 +27,7 @@ namespace Zellige.UI
 
         private void Awake()
         {
-            source = gameObject.AddComponent<AudioSource>();
+            source = GetComponent<AudioSource>();
             source.playOnAwake = false;
             deal = Noise("deal", 0.05f, 0.25f);
             place = Tone("place", new[] { 180f }, 0.09f, 0.5f);

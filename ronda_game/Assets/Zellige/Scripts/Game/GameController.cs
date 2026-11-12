@@ -21,11 +21,12 @@ namespace Zellige.Game
         [SerializeField] private float aiMaxDelay = 1.4f;
         [Tooltip("Demo/testing: a second AI plays the human seat.")]
         [SerializeField] private bool autoPlayHuman;
+        [Tooltip("The match screen in this scene (made by Zellige > Build or Refresh Game UI).")]
+        [SerializeField] private GameScreen screen;
 
         private RondaGame game;
         private SimpleAi ai;
         private SimpleAi demoAi;
-        private GameScreen screen;
         private bool busy;
 
         /// <summary>The engine of the running match (read-only use, e.g. for tests and debugging).</summary>
@@ -35,7 +36,13 @@ namespace Zellige.Game
 
         private void Start()
         {
-            screen = GameScreen.Create();
+            if (screen == null) screen = FindObjectOfType<GameScreen>();
+            if (screen == null)
+            {
+                Debug.LogWarning("Zellige: no authored Game UI in this scene, building it at runtime. " +
+                                 "Use Zellige > Build or Refresh Game UI to save it into the scene.", this);
+                screen = GameScreen.CreateAtRuntime();
+            }
             screen.CardClicked += OnCardClicked;
             screen.BackgroundClicked += () => screen.Select(null, new List<Card>());
             screen.AnnounceClicked += OnAnnounceClicked;
