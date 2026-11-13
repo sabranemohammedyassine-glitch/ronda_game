@@ -277,7 +277,20 @@ namespace Zellige.UI
                 float pulse = 1f + 0.04f * Mathf.Sin(Time.time * Mathf.PI * 2f);
                 panels[activeSeat].TurnRing.transform.localScale = Vector3.one * pulse;
             }
+
+            // Cards are placed when they move; if the screen size changes (window resize,
+            // different aspect ratio) put the hands and the table back in their areas.
+            Vector2 canvasSize = ((RectTransform)transform).rect.size;
+            if (canvasSize != lastCanvasSize)
+            {
+                lastCanvasSize = canvasSize;
+                LayoutHand(HumanSeat, 0f);
+                LayoutHand(OpponentSeat, 0f);
+                LayoutTable(0f);
+            }
         }
+
+        private Vector2 lastCanvasSize;
 
         // ---------- Event playback ----------
 

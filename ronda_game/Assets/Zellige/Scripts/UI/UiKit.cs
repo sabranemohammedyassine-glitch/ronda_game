@@ -119,6 +119,19 @@ namespace Zellige.UI
         }
 
         /// <summary>
+        /// Anchors an element to a point of its parent, e.g. (0, 1) = top-left corner, without
+        /// moving it in the reference layout (parent of <paramref name="referenceSize"/>).
+        /// On other aspect ratios it then keeps its distance to that edge or corner.
+        /// </summary>
+        public static void AnchorTo(RectTransform rect, Vector2 anchor, Vector2 referenceSize)
+        {
+            Vector2 anchorShift = Vector2.Scale(anchor - new Vector2(0.5f, 0.5f), referenceSize);
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.anchoredPosition -= anchorShift;
+        }
+
+        /// <summary>
         /// An image using the sprite when available, otherwise a flat colour. Sprites
         /// with 9-slice borders are drawn sliced; <paramref name="borderScale"/> above 1
         /// makes the borders thinner on small elements.

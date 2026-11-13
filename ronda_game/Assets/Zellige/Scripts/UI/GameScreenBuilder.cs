@@ -25,6 +25,27 @@ namespace Zellige.UI
         private static readonly Vector2 HumanHandPosition = new Vector2(0f, -330f);
         private static readonly Vector2 OpponentHandPosition = new Vector2(0f, 373f);
 
+        // Responsive layout: every HUD element is anchored to its nearest screen edge or corner,
+        // keeping its exact position in the 1920x1080 reference, so 16:9 looks unchanged and
+        // other aspect ratios keep each element at the same distance from the frame.
+        private static readonly Vector2 ReferenceSize = new Vector2(1920f, 1080f);
+        private static readonly Vector2 TopLeft = new Vector2(0f, 1f);
+        private static readonly Vector2 TopRight = new Vector2(1f, 1f);
+        private static readonly Vector2 BottomLeft = new Vector2(0f, 0f);
+        private static readonly Vector2 BottomRight = new Vector2(1f, 0f);
+        private static readonly Vector2 MiddleLeft = new Vector2(0f, 0.5f);
+        private static readonly Vector2 TopCenter = new Vector2(0.5f, 1f);
+        private static readonly Vector2 BottomCenter = new Vector2(0.5f, 0f);
+
+        // The table art: its 80 px border band is the zellige frame (9-slice border set in ArtImporter).
+        private const string TableArtPath = "UI/bg_table_main";
+        private const float TableFrameWidth = 80f;
+
+        private static void Anchor(Component element, Vector2 anchor)
+        {
+            UiKit.AnchorTo((RectTransform)element.transform, anchor, ReferenceSize);
+        }
+
         /// <summary>Creates an EventSystem unless the scene already has one.</summary>
         public static EventSystem EnsureEventSystem()
         {
@@ -74,14 +95,7 @@ namespace Zellige.UI
         {
             Transform root = transform;
 
-            Image background = UiKit.Image("Background", root, Vector2.zero, new Vector2(1920f, 1080f),
-                SpriteLibrary.Get("UI/bg_table_main"), Palette.Navy);
-            var fitter = background.gameObject.AddComponent<AspectRatioFitter>();
-            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            fitter.aspectRatio = 1920f / 1080f;
-            background.raycastTarget = true;
-            backgroundButton = background.gameObject.AddComponent<Button>();
-            backgroundButton.transition = Selectable.Transition.None;
+            backgroundButton = BuildBackground(root);
 
             panels = new PlayerPanel[2];
             panels[HumanSeat] = BuildPlayerPanel(root, HumanSeat, circle);
@@ -97,19 +111,65 @@ namespace Zellige.UI
 
             announceButton = UiKit.Button("Announce Button", root, new Vector2(708f, -377f), new Vector2(300f, 84f),
                 "RONDA!", out announceLabel);
+            Anchor(announceButton, BottomRight);
             announceButton.gameObject.SetActive(false);
 
             soundOnIcon = SpriteLibrary.Get("UI/icon_sound_on");
             soundOffIcon = SpriteLibrary.Get("UI/icon_sound_off");
             soundButton = UiKit.IconButton("Sound Button", root, new Vector2(748f, 412f), 72f, circle,
                 soundOnIcon, "Sound", out soundIcon, out soundFallbackLabel);
+            Anchor(soundButton, TopRight);
             newGameButton = UiKit.IconButton("New Game Button", root, new Vector2(828f, 412f), 72f, circle,
                 SpriteLibrary.Get("UI/icon_restart"), "New", out _, out _);
+            Anchor(newGameButton, TopRight);
 
             BuildResultOverlay(root);
 
             var templates = UiKit.Rect("Templates", root, Vector2.zero, Vector2.zero);
             cardTemplate = CardView.BuildTemplate(templates);
+        }
+
+        /// <summary>
+        /// The table: a solid colour (also the tap-to-deselect target), the felt zoomed to fill
+        /// the space inside the frame (never stretched), and the zellige frame drawn along the
+        /// screen edges whatever the aspect ratio. Returns the background's button.
+        /// </summary>
+        private Button BuildBackground(Transform root)
+        {
+            Image background = UiKit.Image("Background", root, Vector2.zero, Vector2.zero, null, Palette.NavyDeep);
+            UiKit.Stretch(background.rectTransform);
+            background.raycastTarget = true;
+            var button = background.gameObject.AddComponent<Button>();
+            button.transition = Selectable.Transition.None;
+
+            Sprite tableArt = SpriteLibrary.Get(TableArtPath);
+            if (tableArt == null) return button; // no art imported: plain colour
+
+            // The felt: the inside of the table art (a UV window on the same texture), inset by the
+            // frame width and zoomed to cover the space; the mask trims what the zoom pushes outside.
+            Rect full = tableArt.rect;
+            RectTransform feltArea = UiKit.Rect("Felt Area", background.transform, Vector2.zero, Vector2.zero);
+            UiKit.Stretch(feltArea);
+            feltArea.offsetMin = Vector2.one * TableFrameWidth;
+            feltArea.offsetMax = -Vector2.one * TableFrameWidth;
+            feltArea.gameObject.AddComponent<RectMask2D>();
+
+            RectTransform feltRect = UiKit.Rect("Felt", feltArea, Vector2.zero, Vector2.zero);
+            var felt = feltRect.gameObject.AddComponent<RawImage>();
+            felt.texture = tableArt.texture;
+            felt.uvRect = new Rect(TableFrameWidth / full.width, TableFrameWidth / full.height,
+                1f - 2f * TableFrameWidth / full.width, 1f - 2f * TableFrameWidth / full.height);
+            felt.raycastTarget = false;
+            var fitter = feltRect.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fitter.aspectRatio = (full.width - 2f * TableFrameWidth) / (full.height - 2f * TableFrameWidth);
+
+            // The frame: the art's border band only, its edges repeated along the screen edges.
+            Image frame = UiKit.Image("Frame", background.transform, Vector2.zero, Vector2.zero, tableArt, Color.clear);
+            UiKit.Stretch(frame.rectTransform);
+            frame.type = Image.Type.Tiled;
+            frame.fillCenter = false;
+            return button;
         }
 
         private PlayerPanel BuildPlayerPanel(Transform root, int seat, Sprite circle)
@@ -118,6 +178,7 @@ namespace Zellige.UI
 
             Image body = UiKit.Image(seat == HumanSeat ? "Human Panel" : "Opponent Panel", root, PanelPositions[seat], PanelSize,
                 SpriteLibrary.Get("UI/ui_panel"), Palette.WithAlpha(Palette.NavyLight, 0.9f), 1.4f);
+            Anchor(body, seat == HumanSeat ? BottomLeft : TopLeft);
             Transform t = body.transform;
             var avatarPosition = new Vector2(-142f, 0f);
 
@@ -160,6 +221,7 @@ namespace Zellige.UI
         {
             Image board = UiKit.Image("Scoreboard", root, ScoreboardPosition, new Vector2(330f, 220f),
                 SpriteLibrary.Get("UI/ui_panel"), Palette.WithAlpha(Palette.NavyLight, 0.9f), 1.4f);
+            Anchor(board, TopRight);
             Transform t = board.transform;
             UiKit.Text("Title", t, new Vector2(0f, 80f), new Vector2(300f, 30f), "SCORE", 22f, Palette.Silver).characterSpacing = 12f;
             UiKit.Image("Divider", t, new Vector2(0f, 60f), new Vector2(260f, 2f), null, Palette.WithAlpha(Palette.Silver, 0.35f));
@@ -182,12 +244,16 @@ namespace Zellige.UI
         {
             deck = UiKit.Image("Deck", root, DeckPosition, CardView.BaseSize * DeckScale,
                 SpriteLibrary.CardBack, Palette.NavyLight).rectTransform;
+            Anchor(deck, MiddleLeft);
             Image capsule = UiKit.Image("Deck Capsule", root, DeckPosition + new Vector2(0f, -164f), new Vector2(112f, 50f),
                 SpriteLibrary.Get("UI/ui_score_capsule"), Palette.NavyDeep);
+            Anchor(capsule, MiddleLeft);
             deckLabel = UiKit.Text("Deck Count", capsule.transform, new Vector2(0f, 1f), new Vector2(112f, 50f), "40", 32f, Palette.Ivory);
             deckLabel.fontStyle = FontStyles.Bold;
-            UiKit.Text("Deck Caption", root, DeckPosition + new Vector2(0f, -212f), new Vector2(160f, 30f), "DECK", 20f, Palette.Silver)
-                .characterSpacing = 12f;
+            TextMeshProUGUI caption = UiKit.Text("Deck Caption", root, DeckPosition + new Vector2(0f, -212f), new Vector2(160f, 30f),
+                "DECK", 20f, Palette.Silver);
+            caption.characterSpacing = 12f;
+            Anchor(caption, MiddleLeft);
         }
 
         /// <summary>
@@ -197,10 +263,19 @@ namespace Zellige.UI
         private void BuildCardAreas(Transform root)
         {
             RectTransform areas = UiKit.Rect("Card Areas", root, Vector2.zero, Vector2.zero);
-            // Width = room for the row of table cards (the spacing shrinks to fit).
-            tableArea = UiKit.Rect("Table Area", areas, TableAreaPosition, new Vector2(1060f + CardView.BaseSize.x * TableScale, CardView.BaseSize.y * TableScale));
+            UiKit.Stretch(areas);
+
+            // Width = room for the row of table cards (the spacing shrinks to fit). It stretches
+            // with the screen width, keeping the same margins as in the 1920x1080 reference.
+            float tableWidth = 1060f + CardView.BaseSize.x * TableScale;
+            tableArea = UiKit.Rect("Table Area", areas, TableAreaPosition, new Vector2(tableWidth - ReferenceSize.x, CardView.BaseSize.y * TableScale));
+            tableArea.anchorMin = new Vector2(0f, 0.5f);
+            tableArea.anchorMax = new Vector2(1f, 0.5f);
+
             humanHandArea = UiKit.Rect("Human Hand Area", areas, HumanHandPosition, new Vector2(4 * 182f, CardView.BaseSize.y * HandScale));
+            Anchor(humanHandArea, BottomCenter);
             opponentHandArea = UiKit.Rect("Opponent Hand Area", areas, OpponentHandPosition, new Vector2(4 * 84f, CardView.BaseSize.y * OpponentScale));
+            Anchor(opponentHandArea, TopCenter);
 
             cardLayer = UiKit.Rect("Cards", root, Vector2.zero, Vector2.zero);
         }
@@ -220,7 +295,14 @@ namespace Zellige.UI
             calloutTitle.fontSizeMax = 76f;
             calloutTitle.enableWordWrapping = false;
             UiKit.Outline(calloutTitle, outlineMaterial, 0.18f);
-            calloutDetail = UiKit.Text("Detail", callout, new Vector2(0f, -48f), new Vector2(1100f, 44f), "Call-out details", 30f, Palette.Ivory);
+            // 1000 wide so it stays clear of the deck (left) and the scoreboard (right) at 16:9.
+            calloutDetail = UiKit.Text("Detail", callout, new Vector2(0f, -48f), new Vector2(1000f, 44f), "Call-out details", 30f, Palette.Ivory);
+            // One line only: long details (e.g. several announcements) shrink instead of wrapping
+            // onto a second line that would hang over the table cards.
+            calloutDetail.enableAutoSizing = true;
+            calloutDetail.fontSizeMin = 22f;
+            calloutDetail.fontSizeMax = 30f;
+            calloutDetail.enableWordWrapping = false;
             UiKit.Outline(calloutDetail, outlineMaterial, 0.2f);
             callout.gameObject.SetActive(false);
         }

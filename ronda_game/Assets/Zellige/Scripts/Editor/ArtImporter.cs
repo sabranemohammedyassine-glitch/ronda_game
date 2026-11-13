@@ -59,6 +59,11 @@ namespace Zellige.EditorTools
             { "ui_score_capsule", new Vector4(44, 0, 44, 0) },
             { "ui_dialog", new Vector4(72, 72, 72, 72) },
             { "ui_callout", new Vector4(110, 0, 110, 0) },
+            // The table's zellige frame band (~76 px). The game draws this sprite Tiled without its
+            // centre so the frame follows the screen edges at any aspect ratio; the strips between
+            // the corners (1760 and 920 px) are whole multiples of the 40 px star pattern, so the
+            // repeated edges join seamlessly. See GameScreen.BuildBackground.
+            { "bg_table_main", new Vector4(80, 80, 80, 80) },
         };
 
         private void OnPreprocessTexture()
