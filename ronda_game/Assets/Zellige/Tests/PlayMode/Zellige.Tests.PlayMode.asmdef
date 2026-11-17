@@ -1,0 +1,11 @@
+{
+    "name": "Zellige.Tests.PlayMode",
+    "rootNamespace": "Zellige.Tests",
+    "references": ["Zellige.Core", "Zellige.AI", "Zellige.Game", "UnityEngine.UI", "Unity.TextMeshPro", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "overrideReferences": true,
+    "precompiledReferences": ["nunit.framework.dll"],
+    "autoReferenced": false,
+    "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}

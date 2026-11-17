@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Zellige.AI;
+using Zellige.App;
 using Zellige.Core;
 using Zellige.UI;
 
@@ -12,8 +13,12 @@ namespace Zellige.Game
     /// Runs a local match: one human (seat 0) against the AI (seat 1). It sends
     /// commands to the rules engine and hands the resulting events to the screen
     /// to animate. Put this component on any object in the scene.
+    ///
+    /// L2: each match is a <see cref="MatchSession"/> (via <see cref="MatchLifecycle"/>), recorded in
+    /// the local data once the engine reports its end. This controller is also the scene's Back
+    /// handler: during a match Back opens "Leave the match?" (D5); after the match it returns to the Lobby.
     /// </summary>
-    public sealed class GameController : MonoBehaviour
+    public sealed class GameController : MonoBehaviour, IBackHandler
     {
         [Tooltip("0 = a different shuffle every match. Any other value repeats the same match.")]
         [SerializeField] private int fixedSeed;
@@ -28,14 +33,20 @@ namespace Zellige.Game
         private SimpleAi ai;
         private SimpleAi demoAi;
         private bool busy;
+        private MatchLifecycle lifecycle;
 
         /// <summary>The engine of the running match (read-only use, e.g. for tests and debugging).</summary>
         public RondaGame Game => game;
+        /// <summary>The current match's session (L1 lifecycle); null before the first match.</summary>
+        public MatchSession Session => lifecycle?.Current;
+        /// <summary>The match screen this controller drives.</summary>
+        public GameScreen Screen => screen;
         /// <summary>True while animations or the AI are running and the player cannot act.</summary>
         public bool IsBusy => busy;
 
         private void Start()
         {
+            if (lifecycle != null) return; // never set up (or start a match) twice
             if (screen == null) screen = FindObjectOfType<GameScreen>();
             if (screen == null)
             {
@@ -47,13 +58,75 @@ namespace Zellige.Game
             screen.BackgroundClicked += () => screen.Select(null, new List<Card>());
             screen.AnnounceClicked += OnAnnounceClicked;
             screen.NewGameClicked += StartNewMatch;
+            SetUpNavigation();
+            lifecycle = new MatchLifecycle(AppData.Store);
             StartNewMatch();
+        }
+
+        // ---------- Navigation (L2) ----------
+
+        private void SetUpNavigation()
+        {
+            screen.AddNavigationElements(); // only fills gaps in a Game UI saved before L2
+            screen.LobbyClicked += GoToLobby;
+            screen.LeaveDialog.Confirmed += LeaveMatch;
+
+            BackButtonRouter[] routers = FindObjectsOfType<BackButtonRouter>();
+            if (routers.Length != 1)
+            {
+                Debug.LogWarning("Zellige: expected one Back button router in the Game scene, found " + routers.Length + ".", this);
+            }
+            foreach (BackButtonRouter router in routers) router.SetHandler(this);
+        }
+
+        /// <summary>
+        /// Android Back in the match (called by the scene's <see cref="BackButtonRouter"/>):
+        /// an open dialog is cancelled first; during a match Back asks "Leave the match?";
+        /// once the engine has ended the match (it is already recorded) Back returns to the Lobby.
+        /// </summary>
+        public void HandleBack()
+        {
+            ConfirmDialog leave = screen.LeaveDialog;
+            if (leave.IsOpen)
+            {
+                leave.Cancel();
+                return;
+            }
+            QuitDialog quit = screen.GetComponentInChildren<QuitDialog>(true);
+            if (quit != null && quit.IsOpen)
+            {
+                quit.Close();
+                return;
+            }
+            if (game != null && !game.IsMatchOver)
+            {
+                leave.Open();
+                return;
+            }
+            GoToLobby();
+        }
+
+        /// <summary>"Leave the match?" confirmed: the match is abandoned (never completed) and the Lobby opens.</summary>
+        private void LeaveMatch()
+        {
+            lifecycle.Leave();
+            StopAllCoroutines();
+            SceneNavigator.OpenLobby();
+        }
+
+        /// <summary>The result screen's Lobby button (D4). The result was recorded when the engine ended the match.</summary>
+        private void GoToLobby()
+        {
+            if (game != null && !game.IsMatchOver) return; // only after the match; leaving mid-match goes through the dialog
+            StopAllCoroutines();
+            SceneNavigator.OpenLobby();
         }
 
         public void StartNewMatch()
         {
             StopAllCoroutines();
             screen.ResetAll();
+            lifecycle.StartNew();
 
             int seed = fixedSeed != 0 ? fixedSeed : Environment.TickCount;
             game = new RondaGame(new RulesConfig(), seed);
@@ -94,7 +167,17 @@ namespace Zellige.Game
 
         // ---------- Turn flow ----------
 
+        /// <summary>
+        /// Hands a batch of engine events to the match record keeping at once (so a finished match is
+        /// recorded before its animations play), then animates it.
+        /// </summary>
         private IEnumerator PlayEvents(IReadOnlyList<GameEvent> events)
+        {
+            lifecycle.Observe(events);
+            return AnimateEvents(events);
+        }
+
+        private IEnumerator AnimateEvents(IReadOnlyList<GameEvent> events)
         {
             busy = true;
             screen.SetAnnounceButton(null);

@@ -14,6 +14,25 @@ Detail lives in the companion documents:
 
 ---
 
+## Owner approvals — 2026-11-17 (L1 brief)
+
+The owner approved D1–D8 below. They are **authoritative**: where this file or `02`/`03` say otherwise, the approval wins. Those passages are revised when the phase that implements them starts (L2 for the screens).
+
+| Approval | Decides | Effect on the IDs below |
+|---|---|---|
+| **D1** Game modes | Me vs Computer offline; 1 vs 1 and 2 vs 2 shown locked, labelled **"Coming Soon"** | D-L-02 → **CONFIRMED** (option b, locked cards). The label is "Coming Soon", not "Online — coming later". |
+| **D2** Home screen | **All three modes directly on Home**; no Play → Mode selection step | D-L-03 → **SUPERSEDED**. Spec §4.1–4.2 (S-L2 Mode selection) and plan L2 change accordingly. |
+| **D3** Scenes | Separate `Lobby.unity` and `Game.unity`; Lobby becomes the startup scene | D-L-04 → **CONFIRMED**. |
+| **D4** Result screen | Lobby beside Play Again | D-L-06 → **CONFIRMED**. |
+| **D5** Back in a match | "Leave the match?" → Lobby on confirm, stay on cancel; the quit dialog remains a distinct app-exit action | D-L-07, D-L-08 → **CONFIRMED**. |
+| **D6** Interrupted matches | Abandoned; no resume; an abandoned match is **not** a completed match | D-L-09 → **CONFIRMED** (no resume). History keeps **completed matches only**; spec §4.4's "Abandoned" history rows are dropped (see `05` §6). |
+| **D7** Progression | No XP, levels or progression | D-L-12 → **CONFIRMED**. |
+| **D8** Localisation | English first; text not coupled to UI scripts | D-L-13 language part → **CONFIRMED**. Implemented as a key table in L1 (`05` §5). |
+
+Still open: **D-L-18** (app display name; the L1 brief forbids changing it), D-L-14 (rules text review), D-L-17 (visual direction), and the L1 follow-ups in `05_l1_local_data_foundation.md` §8.
+
+---
+
 ## 0. Status vocabulary
 
 | Status | Meaning |

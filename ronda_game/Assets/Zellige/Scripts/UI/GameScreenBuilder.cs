@@ -88,6 +88,9 @@ namespace Zellige.UI
             screen.BuildChildren(circle, outlineMaterial);
 
             canvasObject.SetActive(true);
+            // Dialog canvases were created while the canvas was inactive; apply their sorting now.
+            foreach (QuitDialog quit in canvasObject.GetComponentsInChildren<QuitDialog>(true)) quit.EnsureSorting();
+            if (screen.leaveDialog != null) screen.leaveDialog.EnsureSorting();
             return screen;
         }
 
@@ -129,6 +132,46 @@ namespace Zellige.UI
             cardTemplate = CardView.BuildTemplate(templates);
 
             QuitDialog.Build(root);
+            AddNavigationElements();
+        }
+
+        /// <summary>
+        /// L2 additions to the match screen: the result screen's Lobby button beside Play Again (D4),
+        /// the "Leave the match?" dialog (D5) and the scene's single Back button router.
+        /// Adds only what is missing, so it can upgrade a Game UI saved before L2 without rebuilding
+        /// it (Zellige > Add Lobby Navigation to Game UI) and is harmless to run twice.
+        /// Returns true if anything was added.
+        /// </summary>
+        public bool AddNavigationElements()
+        {
+            bool changed = false;
+
+            if (lobbyButton == null && playAgainButton != null)
+            {
+                // Play Again moves left to sit beside the new Lobby button; nothing else on the result screen changes.
+                var playAgain = (RectTransform)playAgainButton.transform;
+                playAgain.anchoredPosition = new Vector2(-190f, playAgain.anchoredPosition.y);
+                playAgain.sizeDelta = new Vector2(340f, playAgain.sizeDelta.y);
+                lobbyButton = UiKit.Button("Lobby Button", playAgain.parent, new Vector2(190f, playAgain.anchoredPosition.y),
+                    playAgain.sizeDelta, "", out TextMeshProUGUI lobbyLabel, primary: false);
+                LocalizedText.Attach(lobbyLabel, Zellige.App.TextKeys.ResultLobby);
+                if (Application.isPlaying) WireLobbyButton();
+                changed = true;
+            }
+
+            if (leaveDialog == null)
+            {
+                leaveDialog = ConfirmDialog.Build(transform, "Leave Match Dialog", Zellige.App.TextKeys.LeaveTitle,
+                    Zellige.App.TextKeys.LeaveMessage, Zellige.App.TextKeys.LeaveCancel, Zellige.App.TextKeys.LeaveConfirm);
+                changed = true;
+            }
+
+            if (GetComponent<BackButtonRouter>() == null)
+            {
+                gameObject.AddComponent<BackButtonRouter>();
+                changed = true;
+            }
+            return changed;
         }
 
         /// <summary>

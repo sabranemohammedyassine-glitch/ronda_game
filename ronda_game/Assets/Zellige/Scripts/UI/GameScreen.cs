@@ -84,6 +84,10 @@ namespace Zellige.UI
         [SerializeField] private TextMeshProUGUI resultTitle;
         [SerializeField] private TextMeshProUGUI resultScore;
         [SerializeField] private Button playAgainButton;
+        [SerializeField] private Button lobbyButton;
+
+        [Header("Navigation (L2)")]
+        [SerializeField] private ConfirmDialog leaveDialog;
 
         [Header("Audio")]
         [SerializeField] private SoundFx sound;
@@ -100,8 +104,18 @@ namespace Zellige.UI
         public event Action BackgroundClicked;
         public event Action AnnounceClicked;
         public event Action NewGameClicked;
+        /// <summary>Raised by the result screen's Lobby button (D4).</summary>
+        public event Action LobbyClicked;
 
         public CardView Selected => selected;
+        /// <summary>"Leave the match?" (D5); null only in a scene built before L2 and not refreshed.</summary>
+        public ConfirmDialog LeaveDialog => leaveDialog;
+        /// <summary>True while the result screen is shown.</summary>
+        public bool IsResultShown => resultOverlay != null && resultOverlay.activeSelf;
+        public Button PlayAgainButton => playAgainButton;
+        public Button LobbyButton => lobbyButton;
+
+        private bool lobbyButtonWired;
 
         private void Awake()
         {
@@ -118,6 +132,14 @@ namespace Zellige.UI
             soundButton.onClick.AddListener(ToggleSound);
             newGameButton.onClick.AddListener(() => NewGameClicked?.Invoke());
             playAgainButton.onClick.AddListener(() => NewGameClicked?.Invoke());
+            WireLobbyButton();
+        }
+
+        private void WireLobbyButton()
+        {
+            if (lobbyButton == null || lobbyButtonWired) return;
+            lobbyButton.onClick.AddListener(() => LobbyClicked?.Invoke());
+            lobbyButtonWired = true;
         }
 
         // ---------- Layout ----------

@@ -5,12 +5,15 @@ using UnityEngine.UI;
 namespace Zellige.UI
 {
     /// <summary>
-    /// "Quit Zellige?" confirmation, opened by the Android Back button (Escape on desktop;
-    /// Unity's legacy input reports Android Back as Escape). Back while the dialog is open
-    /// cancels it, like any Android dialog.
+    /// "Quit Zellige?" confirmation: the application-exit action. In the Lobby, the Android Back
+    /// button (Escape on desktop; Unity's legacy input reports Android Back as Escape) opens it,
+    /// and Back while it is open cancels it, like any Android dialog.
     ///
-    /// This component sits on an always-active object so it can listen for the key; the
-    /// visible part (<see cref="overlay"/>) is a child that is shown and hidden. The object has
+    /// Since L2 the dialog no longer listens for the key itself: the scene's single
+    /// <see cref="BackButtonRouter"/> calls <see cref="HandleBack"/>, so the quit dialog and the
+    /// "Leave the match?" dialog can never both react to one press (D5).
+    ///
+    /// The visible part (<see cref="overlay"/>) is a child that is shown and hidden. The object has
     /// its own canvas with a higher sorting order, so the dialog is always drawn above the
     /// table, call-outs and the result screen, and its dimmed backdrop blocks all clicks.
     /// While it is open the game is paused (time scale 0): card animations and Nadia's
@@ -31,14 +34,10 @@ namespace Zellige.UI
 
         private void Awake()
         {
+            EnsureSorting();
             overlay.SetActive(false);
             cancelButton.onClick.AddListener(Close);
             quitButton.onClick.AddListener(Quit);
-        }
-
-        private void Update()
-        {
-            if (Input.GetKeyDown(KeyCode.Escape)) HandleBack();
         }
 
         private void OnDisable()
@@ -52,6 +51,17 @@ namespace Zellige.UI
         {
             if (IsOpen) Close();
             else Open();
+        }
+
+        /// <summary>
+        /// Draws the dialog above the rest of its scene. Unity ignores "override sorting" on a canvas
+        /// created inside an inactive hierarchy, so this is applied again once the dialog is active.
+        /// </summary>
+        public void EnsureSorting()
+        {
+            var canvas = GetComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = SortingOrder;
         }
 
         public void Open()

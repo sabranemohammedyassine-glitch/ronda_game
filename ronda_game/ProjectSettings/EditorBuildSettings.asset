@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Zellige/Scenes/Lobby.unity
+    guid: d57c2a970eafebf489234cb0934a6ae4
+  - enabled: 1
     path: Assets/Zellige/Scenes/Game.unity
     guid: afc0109b1d9e39a4c86e4f8d54260e55
   m_configObjects: {}

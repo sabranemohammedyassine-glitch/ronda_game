@@ -111,6 +111,40 @@ namespace Zellige.EditorTools
             return dialog;
         }
 
+        /// <summary>
+        /// L2: adds the result screen's Lobby button, the "Leave the match?" dialog and the Back button
+        /// router to the Game UI already saved in the scene, without rebuilding anything else (hand
+        /// edits and object IDs are kept). Running it again changes nothing. New builds include them.
+        /// </summary>
+        [MenuItem("Zellige/Add Lobby Navigation to Game UI")]
+        public static bool AddLobbyNavigation()
+        {
+            if (EditorApplication.isPlaying || SceneManager.GetActiveScene().path != ScenePath)
+            {
+                Debug.LogError("Zellige: open " + ScenePath + " in Edit Mode before adding the Lobby navigation.");
+                return false;
+            }
+            GameScreen screen = Object.FindObjectOfType<GameScreen>(true);
+            if (screen == null)
+            {
+                Debug.LogError("Zellige: no Game UI in the scene. Run Zellige > Build or Refresh Game UI first.");
+                return false;
+            }
+
+            Undo.RegisterFullObjectHierarchyUndo(screen.gameObject, "Add Lobby Navigation");
+            if (!screen.AddNavigationElements())
+            {
+                Debug.Log("Zellige: the Game UI already has the Lobby navigation.");
+                return false;
+            }
+            EditorUtility.SetDirty(screen);
+            Scene scene = SceneManager.GetActiveScene();
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("Zellige: Lobby navigation added to " + ScenePath);
+            return true;
+        }
+
         private static bool OpenGameScene()
         {
             if (SceneManager.GetActiveScene().path == ScenePath) return true;
@@ -119,7 +153,7 @@ namespace Zellige.EditorTools
             return true;
         }
 
-        private static void EnsureSingleEventSystem()
+        internal static void EnsureSingleEventSystem()
         {
             EventSystem[] systems = Object.FindObjectsOfType<EventSystem>(true);
             if (systems.Length == 0)
@@ -150,7 +184,7 @@ namespace Zellige.EditorTools
         }
 
         /// <summary>The white disc used for avatar masks and round buttons, saved as a sprite asset.</summary>
-        private static Sprite EnsureCircleSprite()
+        internal static Sprite EnsureCircleSprite()
         {
             if (!File.Exists(CirclePath))
             {
@@ -174,7 +208,7 @@ namespace Zellige.EditorTools
         }
 
         /// <summary>A copy of the default TextMeshPro material with a dark outline, for call-out text.</summary>
-        private static Material EnsureOutlineMaterial()
+        internal static Material EnsureOutlineMaterial()
         {
             var material = AssetDatabase.LoadAssetAtPath<Material>(OutlineMaterialPath);
             if (material != null) return material;
