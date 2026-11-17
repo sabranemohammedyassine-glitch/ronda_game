@@ -133,11 +133,12 @@ Code references are `file:line` in `ronda_game/Assets/Zellige/Scripts/`. Test na
 | # | Finding | Severity | Detail |
 |---|---|---|---|
 | R-1 | No behaviour contradicts the evidence | — | Every CONFIRMED rule in rows 1–44 traces to code that behaves as documented. |
-| R-2 | Provisional rules hard-coded | Medium (process) | Rows 10, 14, 33, 43 and the quad-off bonus count (row 34) are UNKNOWN rules fixed in code, not in `RulesConfig`. The MVP brief requires unverified mechanics to be isolated in configuration. |
+| R-2 | Provisional rules hard-coded (**resolved 2026-11-17**: H-1…H-10 are `RulesConfig` settings, defaults unchanged; see doc 06) | Medium (process) | Rows 10, 14, 33, 43 and the quad-off bonus count (row 34) are UNKNOWN rules fixed in code, not in `RulesConfig`. The MVP brief requires unverified mechanics to be isolated in configuration. |
 | R-3 | Invalid seat index throws `IndexOutOfRangeException` | Low (robustness) | `GetHand(seat)`, `GetAnnounceableRanks(seat)` and `Announce(seat, …)` index arrays without validating `seat` (QA IL-06). `PlayCard` is safe (returns illegal). Not reachable from the UI. |
 | R-4 | Announcement resolution order on the 2nd play | Low (unknown rule) | On the play that closes the window, Derba/Missa are scored **before** the announcement contest. If that Derba/Missa reaches 41 the pending announcements are discarded. Phase 3 lists this case (doc 03 §12) and it is consistent with it, but with a real 15 s window the order could differ. Depends on E-2. |
 | R-5 | First player's announcement window is shorter than the second's | Low (simplification) | With `AnnounceWindowPlays = 2` the first player must announce before their first card; the second player may see one card first. The reference's timer gives both roughly the same time. |
-| R-6 | Quad-off variant counts one announcement | Low (non-default) | See row 34. |
+| R-6 | Quad-off variant counts one announcement | Low (non-default) | See row 34. **Now configurable (H-9, 2026-11-17).** |
+| F-1 | After an exact tie at or above the target, the next deck ends at its first point | Medium (unverified rule, documented 2026-11-17) | Both players are already past 41, so the during-play check "reaching the target ends the match" fires on the first non-capped point of the extra deck. Phase 3 RL-23(b) describes the extra deck as decided "after a tally". Both are proposals; the reference is UNKNOWN (M-50). **Not changed:** pinned by the characterisation test `H3_AfterATieAtTheTarget_TheFirstPointOfTheNextDeckWins_CurrentBehaviour`. Resolve together with M-50 (ME-03/ME-04). |
 
 ---
 
@@ -197,9 +198,14 @@ Before Phase 1 the largest gap was **end of deck and match end: 0 of 14 cases we
 |---|---|---|---|---|
 | 1.3 Missa, Derba (10) | 4 (+DB-07) | 0 | 6 | — |
 | 1.4 Announcements (16) | 11 (+RN-13) | 1 | 4 | — |
-| 1.5 End of deck, match (14) | **10** (ED-01, 02, 04, 05, 06, 07, ME-01, 02, 05, 06) | 1 (ED-03) | 0 | 3 (ED-08, ME-03, ME-04) |
+| 1.5 End of deck, match (14) | **11** (ED-01…07, ME-01, 02, 05, 06; ED-03 since 2026-11-17) | 0 | 0 | 3 (ED-08, ME-03, ME-04) |
 | Other sections | unchanged | unchanged | unchanged | — |
-| **Total (79)** | **41** | **14** | **21** | **3** |
+| **Total (79)** | **42** | **13** | **21** | **3** |
+
+**2026-11-17 additions (suite 126 → 175, including the 4 code-review tests):**
+- `GoldenMasterTests` (2): event-stream fingerprints of 40 full matches under the default rules, recorded before any Phase D change.
+- `StateFactoryTests` (11): the A-5 factory, including ED-03.
+- `RulesSettingsTests` (32): H-1 … H-10.
 
 ### 4.4 Phase 1 results (2026-11-13)
 
@@ -223,7 +229,7 @@ Before Phase 1 the largest gap was **end of deck and match end: 0 of 14 cases we
 | Case | Status | Note |
 |---|---|---|
 | ED-01, 02, 04, 05, 06, 07 | Covered | ED-02 reproduces the live-play numbers of A021 (8 / 32 cards; +5 and +12). |
-| ED-03 | **Partial** | The rule content (dealer took last, so no +5; leftover goes to the dealer and counts towards over-20) is covered by ED-01 + ED-07 and ED-04. The exact observed decomposition 23 + 3 = 26 → +6 (A039 → A041) is **not reproduced**. An exhaustive search found no first-deck fixture that ends with three leftover cards and the dealer capturing last, with or without cards carried over from deal 4. The decomposition itself is only INFERRED. Reproducing it needs a test-only way to start from a chosen mid-deck state (plan A-5). |
+| ED-03 | **Covered (2026-11-17)** | Reproduced with the exact observed numbers (23 + 3 leftover = 26 → +6; other 14; no +5) by `StateFactoryTests.ED03_…`, using the A-5 state factory. (Earlier: an exhaustive search had found no first-deck script for it.) The observed decomposition itself remains INFERRED. |
 | ED-08 | **BLOCKED** | "No capture in a whole deck" cannot happen under the current capture model (≤ 1 card per rank, so the table holds at most 10 cards). The dealer-rule outcome for that case is also unspecified (C-7). It needs the capture-model decision (E-1) and a rule. |
 | ME-01, 02, 05, 06; DB-07; RN-13 | Covered | ME-01 runs for both seats: human victory and human defeat. |
 | ME-03 | **BLOCKED** | Both players ≥ 41 after one tally (M-50 / U-7, reference UNKNOWN). The current "higher wins" is a Phase 3 proposal. |

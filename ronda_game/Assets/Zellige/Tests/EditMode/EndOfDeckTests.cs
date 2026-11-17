@@ -168,7 +168,7 @@ namespace Zellige.Tests
         ///                    A 11 takes 11 (Derba+Missa: 15) · H 12 drop · A 12 takes 12 (Derba+Missa: 17) ·
         ///                    H 12 drop → table {12}. Last capture: A. Piles H 8 / A 31.
         /// </summary>
-        private static ScriptedDeck Ed02()
+        internal static ScriptedDeck Ed02()
         {
             return new ScriptedDeck(dealer: H)
                 .Deal(P(1, 2, 3, 4), P(2, 3, 4, 1))

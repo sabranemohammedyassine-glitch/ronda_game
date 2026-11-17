@@ -77,7 +77,7 @@ namespace Zellige.Game
             }
             else
             {
-                screen.Select(view, CaptureRules.FindCaptures(game.Table, view.Card));
+                screen.Select(view, game.PreviewCaptures(view.Card));
             }
         }
 

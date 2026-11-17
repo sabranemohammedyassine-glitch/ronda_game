@@ -9,7 +9,7 @@ namespace Zellige.Core
     /// No Unity types: it runs the same in the game and in tests.
     /// Seats are 0 and 1. Rule ids (RL-xx) refer to docs/phase3/03_rules_and_scoring_spec.md.
     /// </summary>
-    public sealed class RondaGame
+    public sealed partial class RondaGame
     {
         public const int PlayerCount = 2;
 
@@ -33,7 +33,11 @@ namespace Zellige.Core
         private int lastPlaySeat;
         private Card lastPlayCard;
         private bool lastPlayWasDrop;
+        private int lastPlayDeal;
         private bool tallying;
+        // H-6: while true, reaching the target is noted and the match ends after the current group of points.
+        private bool deferMatchEnd;
+        private int pendingWinner = -1;
 
         public RondaGame(RulesConfig rules, int seed)
         {
@@ -65,15 +69,18 @@ namespace Zellige.Core
         /// <summary>
         /// Starts a match. For tests and scripted games the first dealer and the order of
         /// the first deck can be fixed: index 0 is the top card; each deal gives the
-        /// first player (the non-dealer) the next CardsPerDeal cards, then the dealer.
+        /// first player (the non-dealer by default, see RulesConfig.FirstPlayer) the next
+        /// CardsPerDeal cards, then the other player. The first dealer comes from the argument,
+        /// else RulesConfig.FirstDealerSeat, else the match seed (H-10).
         /// </summary>
         public IReadOnlyList<GameEvent> StartMatch(int? firstDealer = null, IList<Card> firstDeckOrder = null)
         {
             if (started) throw new InvalidOperationException("The match has already started.");
             if (firstDeckOrder != null) ValidateDeck(firstDeckOrder);
+            Rules.Validate();
             started = true;
             events = new List<GameEvent>();
-            Dealer = firstDealer ?? rng.Next(PlayerCount);
+            Dealer = firstDealer ?? Rules.FirstDealerSeat ?? rng.Next(PlayerCount);
             StartDeckRound(firstDeckOrder);
             return events;
         }
@@ -88,7 +95,7 @@ namespace Zellige.Core
             {
                 foreach (Card card in hands[seat])
                 {
-                    if (CaptureRules.FindCaptures(table, card).Count > 0) legal.Add(card);
+                    if (PreviewCaptures(card).Count > 0) legal.Add(card);
                 }
                 if (legal.Count > 0) return legal;
             }
@@ -99,6 +106,16 @@ namespace Zellige.Core
         public bool CanPlay(int seat, Card card)
         {
             return GetLegalCards(seat).Contains(card);
+        }
+
+        /// <summary>
+        /// The table cards that playing <paramref name="card"/> would capture right now, under this
+        /// game's rules (including RulesConfig.ChainWrapsAfterTwelve). The engine, the AI and the
+        /// capture preview all use this, so they always agree. Does not change the game.
+        /// </summary>
+        public List<Card> PreviewCaptures(Card card)
+        {
+            return CaptureRules.FindCaptures(table, card, Rules.ChainWrapsAfterTwelve);
         }
 
         /// <summary>
@@ -118,7 +135,7 @@ namespace Zellige.Core
             hands[seat].Remove(card);
             ranksPlayedThisDeal[seat].Add(card.Rank);
 
-            List<Card> captured = CaptureRules.FindCaptures(table, card);
+            List<Card> captured = PreviewCaptures(card);
             events.Add(new CardPlayedEvent { Seat = seat, Card = card, Captured = captured });
 
             bool isFinalPlayOfDeck = stock.Count == 0 && hands[0].Count == 0 && hands[1].Count == 0;
@@ -129,11 +146,13 @@ namespace Zellige.Core
                 piles[seat].AddRange(captured);
                 lastCapturer = seat;
 
+                deferMatchEnd = Rules.PointsAfterWinningPointCount;
                 if (isDerba) Award(seat, Rules.DerbaPoints, ScoreReason.Derba, false);
                 if (table.Count == 0 && (!isFinalPlayOfDeck || Rules.MissaOnFinalPlay))
                 {
                     Award(seat, Rules.MissaPoints, ScoreReason.Missa, false);
                 }
+                FinishDeferredMatchEnd();
             }
             else
             {
@@ -144,6 +163,7 @@ namespace Zellige.Core
             lastPlaySeat = seat;
             lastPlayCard = card;
             lastPlayWasDrop = captured.Count == 0;
+            lastPlayDeal = DealNumber;
             if (IsMatchOver) return events;
 
             playsThisDeal++;
@@ -179,7 +199,8 @@ namespace Zellige.Core
         /// </summary>
         public bool WouldBeDerba(int seat, Card card)
         {
-            return hasLastPlay && lastPlayWasDrop && lastPlaySeat != seat && lastPlayCard.Rank == card.Rank;
+            return hasLastPlay && lastPlayWasDrop && lastPlaySeat != seat && lastPlayCard.Rank == card.Rank
+                   && (Rules.DerbaAcrossDeals || lastPlayDeal == DealNumber); // H-5
         }
 
         /// <summary>
@@ -214,7 +235,11 @@ namespace Zellige.Core
             int value = isTringla ? Rules.TringlaPoints
                 : count == 4 ? 2 * Rules.RondaPoints
                 : Rules.RondaPoints;
-            announcements.Add(new Announcement { Seat = seat, Rank = rank, IsTringla = isTringla, Value = value });
+            bool quadAsTwo = count == 4 && !isTringla && Rules.QuadCountsAsTwoAnnouncements; // H-9
+            announcements.Add(new Announcement
+            {
+                Seat = seat, Rank = rank, IsTringla = isTringla, Value = value, Count = quadAsTwo ? 2 : 1
+            });
             return true;
         }
 
@@ -254,9 +279,9 @@ namespace Zellige.Core
             if (IsMatchOver) return;
 
             DealNumber++;
-            int first = Other(Dealer);
+            int first = Rules.FirstPlayer == FirstPlayer.Dealer ? Dealer : Other(Dealer); // H-1
             DrawCards(first);
-            DrawCards(Dealer);
+            DrawCards(Other(first));
 
             playsThisDeal = 0;
             announcements.Clear();
@@ -295,7 +320,7 @@ namespace Zellige.Core
                 Announcements = new List<Announcement>(announcements),
                 Winner = winner
             });
-            if (winner < 0) return;
+            if (winner < 0) return; // H-2: AnnouncementTie.NobodyScores, the only defined option
 
             int own = 0;
             int opposing = 0;
@@ -309,13 +334,16 @@ namespace Zellige.Core
                 }
                 else
                 {
-                    opposing++;
+                    opposing += a.Count; // H-9: a quad may count as two announcements
                 }
             }
 
+            // H-8: TringlaAwardCap.WholeAwardUncapped, the only defined option.
             bool capped = Rules.RondaCannotWin && !winnerHasTringla;
+            deferMatchEnd = Rules.PointsAfterWinningPointCount;
             Award(winner, own, ScoreReason.Announcement, capped);
             if (opposing > 0) Award(winner, opposing, ScoreReason.AnnouncementBonus, capped);
+            FinishDeferredMatchEnd();
         }
 
         private int FindContestWinner()
@@ -382,11 +410,21 @@ namespace Zellige.Core
 
             tallying = false;
 
-            // RL-23(b): after a tally the higher score wins; equal scores play another deck.
-            bool targetReached = scores[0] >= Rules.TargetScore || scores[1] >= Rules.TargetScore;
-            if (targetReached && scores[0] != scores[1])
+            // RL-23(b): after the whole tally, one player at or above the target wins.
+            bool reached0 = scores[0] >= Rules.TargetScore;
+            bool reached1 = scores[1] >= Rules.TargetScore;
+            if (reached0 && reached1)
             {
-                EndMatch(scores[0] > scores[1] ? 0 : 1);
+                // H-3: both reached it in the same tally.
+                if (Rules.BothReachTarget == BothReachTarget.HigherScoreWinsTieReplays && scores[0] != scores[1])
+                {
+                    EndMatch(scores[0] > scores[1] ? 0 : 1);
+                }
+                // Otherwise another deck is played.
+            }
+            else if (reached0 || reached1)
+            {
+                EndMatch(reached0 ? 0 : 1);
             }
         }
 
@@ -410,8 +448,23 @@ namespace Zellige.Core
                 NewScore = scores[seat]
             });
 
-            // RL-23(a): during play the match ends the moment the target is reached.
-            if (!tallying && granted > 0 && scores[seat] >= Rules.TargetScore) EndMatch(seat);
+            // RL-23(a): during play the match ends the moment the target is reached
+            // (H-6: or after the rest of this group of points, when PointsAfterWinningPointCount).
+            if (!tallying && granted > 0 && scores[seat] >= Rules.TargetScore)
+            {
+                if (!deferMatchEnd) EndMatch(seat);
+                else if (pendingWinner < 0) pendingWinner = seat;
+            }
+        }
+
+        /// <summary>H-6: ends the match noted during a deferred group of points, if any.</summary>
+        private void FinishDeferredMatchEnd()
+        {
+            deferMatchEnd = false;
+            if (pendingWinner < 0) return;
+            int winner = pendingWinner;
+            pendingWinner = -1;
+            EndMatch(winner);
         }
 
         private void EndMatch(int winner)

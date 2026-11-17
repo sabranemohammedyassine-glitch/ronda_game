@@ -1,6 +1,6 @@
 # MVP 06 — Deterministic test fixture (A-5) and configurable uncertain rules (A-2)
 
-**Date:** 2026-11-17 · **Status:** design, ready to implement; **nothing in this document is built yet**.
+**Date:** 2026-11-17 · **Status:** **implemented 2026-11-17** (see "Implementation notes" at the end). The design below is kept as written.
 **Inputs:** `04_gameplay_implementation_plan.md` (A-2, A-5), `03_gameplay_fidelity_audit.md` (rows #10, #14, #33, #34, #43; R-2), `01_verified_rules_reference.md` (U-1…U-12), the engine (`Scripts/Core/RondaGame.cs`, `RulesConfig.cs`, `Card.cs`).
 **Constraint for both parts:** current gameplay behaviour must not change. Every new default equals today's behaviour, and the full EditMode suite (126 tests) must pass unchanged.
 
@@ -173,3 +173,57 @@ H-10 needs no field: tests and the game already pass `firstDealer` when they nee
 3. **Alternatives that need more than a few lines are deferred:** e.g. `AnnouncementTie.LaterDerbasPayOtherSide`, which needs per-rank tie memory. The enum value is added only when it is implemented, never as a stub that throws at runtime.
 4. **One change per commit:** e.g. "A-2: make first player configurable (default unchanged)", to keep review easy.
 5. **The values of unknown rules are not decided here.** They are settled later by the evidence items E-1…E-7 (audit §6) and O-1…O-7 (`05_catch_specification.md`), or by the product owner.
+
+---
+
+## Implementation notes (2026-11-17)
+
+**Part C, as built:**
+- **Files:** `Core/RondaGame.TestSetup.cs` holds `GameSetup`, `PreviousPlay` and the internal `RondaGame.FromSetup` with the validation listed in C.2. `Core/AssemblyInfo.cs` grants access to `Zellige.Tests.EditMode`. `RondaGame` became `partial`; that is the only change to `RondaGame.cs` for Part C.
+- **Additions to the design:**
+  - `PreviousPlay.Deal`, needed by H-5;
+  - a "players alternate" hand-size check: the player to move holds as many cards as the other, or one more.
+- **Test helper:** `Tests/EditMode/StateBuilder.cs`. `PilesWithRest(n)` fills unplaced cards into the piles.
+- **Tests:** `StateFactoryTests`, 11 in total:
+  - ED-03 with the X-14 numbers;
+  - agreement with the full-deck ED-02;
+  - an exact-state check;
+  - 7 refusal checks;
+  - an isolation check (factory and setup types are not public).
+
+**Part D, as built (deviations from D.2 in bold):**
+
+| Setting | Options implemented | Note |
+|---|---|---|
+| H-1 `FirstPlayer` | NonDealer (default), Dealer | Deal order follows: the first player receives the first 4 cards. |
+| H-2 `AnnouncementTie` | NobodyScores only | The tutorial clause is not defined precisely (who is "the other side", for how long), so it was not implemented. |
+| H-3 `BothReachTarget` | HigherScoreWinsTieReplays (default), AlwaysPlayAnotherDeck | Both inherit finding **F-1** (audit §3): an extra deck ends at its first point. |
+| H-4 `ChainWrapsAfterTwelve` | false (default), true | `CaptureRules.FindCaptures(..., wrapAfterTwelve)`; never more than one card per rank. The engine, Nadia's evaluation (`SimpleAi`) and the capture preview (`GameController`) all use `RondaGame.PreviewCaptures`, so they agree (fixed in the code review, see below). |
+| H-5 `DerbaAcrossDeals` | true (default), false | Never across decks (unchanged). |
+| H-6 `PointsAfterWinningPointCount` | false (default), true | Applies to one play's Derba + Missa, and to one announcement award (own + bonus). The winner never changes. |
+| H-7 `PendingAnnouncementsAtMatchEnd` | **Discard only (enum instead of the proposed bool)** | No alternative is documented; the proposed bool did not define whether scoring them could change the winner. |
+| H-8 `TringlaAwardCap` | **WholeAwardUncapped only (enum instead of the proposed bool)** | "Only the tringla uncapped" has two readings with different final scores; in 1v1 neither can change the winner. |
+| H-9 `QuadCountsAsTwoAnnouncements` | false (default), true | `Announcement.Count` (1 or 2) feeds the opponent's bonus. |
+| H-10 `FirstDealerSeat` | null = random (default), 0, 1 | **A field was added** although D.2 said none was needed; `StartMatch(firstDealer)` still overrides it. |
+
+**Default behaviour preserved:**
+- **Golden master:** `GoldenMasterTests` fingerprints the complete event stream of 40 matches (20 AI-vs-AI with announcements, 20 random-legal). The fingerprints were recorded from the engine before Phase D (MD5 `8b75aed4…`) and still match after it.
+- **Sensitivity checked:** temporarily flipping one default (`DerbaAcrossDeals = false`) made both fingerprints and the defaults test fail; the file was then restored byte-for-byte.
+- **Existing tests:** all 126 earlier tests pass unchanged.
+
+### Code-review fixes (2026-11-17, before the first commit)
+
+| # | Finding | Fix | Test |
+|---|---|---|---|
+| CR-1 | H-4 was applied by the engine only. Nadia's evaluation (2 call sites) and the capture preview still used the non-wrapping chain. | New `RondaGame.PreviewCaptures(card)`, used by the engine, `SimpleAi` and `GameController`. | `H4_AiAndCapturePreview_FollowTheEngineRule` (Nadia's choice and the preview change with the setting) |
+| CR-2 | The fixture accepted a capturing previous play by one player while another was named last capturer, a `LastPlay.Deal` outside 0…DealNumber, and a negative `PlaysThisDeal`. | Three new validation rules. | added to `Factory_Refuses_InconsistentCaptureHistory` |
+| CR-3 | The single-option settings (H-2, H-7, H-8) are not read by the engine, and no enum value was validated: a cast such as `(AnnouncementTie)1` was silently accepted. | `RulesConfig.Validate()`, called by `StartMatch` and the fixture, refuses any value without an implementation. | `UndefinedSettingValues_AreRefusedAtMatchStart`, `…ByTheTestFixtureToo` |
+| CR-4 | The golden-master text used the current culture for numbers. A machine whose minus sign is not "-" would compute a different fingerprint. | Invariant culture. The fingerprints are unchanged on the en-US Editor where they were recorded. | golden master still matches |
+| CR-5 | The F-1 characterisation test used `Assume`, which reports "inconclusive" instead of failing. | `Assert`. | — |
+| CR-6 | The test factory was compiled into player builds (unreachable). | `RondaGame.TestSetup.cs` is wrapped in `#if UNITY_EDITOR`. | Android build checked: `GameSetup`, `FromSetup`, `PreviousPlay` absent from the IL2CPP metadata |
+
+After the fixes: 175 / 175 EditMode tests pass, and the golden-master fingerprints are unchanged (the AI change is behaviour-neutral with default settings).
+
+**Known limitations of the fixture (documented, not fixed):**
+- It cannot pre-load pending announcements, or which ranks a player has already played this deal. A state with an open announcement window therefore starts with no announcements and no played ranks.
+- The stock size is not cross-checked against `DealNumber`.

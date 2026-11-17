@@ -48,7 +48,7 @@ namespace Zellige.AI
         private static int Evaluate(RondaGame game, int seat, Card card)
         {
             IReadOnlyList<Card> table = game.Table;
-            List<Card> captured = CaptureRules.FindCaptures(table, card);
+            List<Card> captured = game.PreviewCaptures(card); // same capture rule as the engine (incl. H-4)
 
             if (captured.Count > 0)
             {
@@ -61,7 +61,7 @@ namespace Zellige.AI
             // Dropping: avoid feeding the opponent a long chain, and prefer to drop a
             // rank we hold twice (we can take it back next turn).
             var tableAfterDrop = new List<Card>(table) { card };
-            int chainGiven = CaptureRules.FindCaptures(tableAfterDrop, card).Count;
+            int chainGiven = CaptureRules.FindCaptures(tableAfterDrop, card, game.Rules.ChainWrapsAfterTwelve).Count;
             int dropScore = -10 * chainGiven;
             if (CountRank(game.GetHand(seat), card.Rank) >= 2) dropScore += 15;
             return dropScore;

@@ -20,6 +20,8 @@ namespace Zellige.Core
         public int Rank;
         public bool IsTringla;
         public int Value;
+        /// <summary>How many announcements this counts as for the opponent's bonus (1; 2 for a quad under H-9).</summary>
+        public int Count = 1;
     }
 
     /// <summary>

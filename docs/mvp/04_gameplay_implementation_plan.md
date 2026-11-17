@@ -72,8 +72,8 @@ The engine's `PlayerCount = 2` assumption stays.
 |---|---|
 | Android Back → "Quit Zellige?" confirmation | **Done.** `Scripts/UI/QuitDialog.cs`, added to the saved scene in place (39 objects added, 1 changed). 5 EditMode tests; Editor Play Mode verified. Device test pending (no phone connected via adb). |
 | B-1 Catch | **Investigated, not implemented.** `05_catch_specification.md`: confirmed facts, unknowns UK-1…UK-11, owner decisions D-1…D-4, observations O-1…O-7. |
-| A-5 test fixture | **Designed** in `06_test_fixture_and_rules_config.md` Part C (internal factory + `InternalsVisibleTo` the test assembly; no production controls). |
-| A-2 configurable uncertain rules | **Designed** in `06_test_fixture_and_rules_config.md` Part D: 10 hard-coded assumptions (H-1…H-10), flat `RulesConfig` fields with current defaults. |
+| A-5 test fixture | **Done 2026-11-17.** `Core/RondaGame.TestSetup.cs` (`GameSetup`, internal `RondaGame.FromSetup`), `Core/AssemblyInfo.cs`, `Tests/EditMode/StateBuilder.cs`; 11 tests; ED-03 reproduced with its observed numbers. |
+| A-2 configurable uncertain rules | **Done 2026-11-17.** H-1…H-10 in `RulesConfig`. Selectable alternatives for H-1, H-3, H-4, H-5, H-6, H-9, H-10. Single defined option for H-2, H-7, H-8 (no well-defined alternative). 32 tests. Default behaviour proved unchanged by a golden master recorded before the change. |
 
 ## E. Recommended order
 
