@@ -127,6 +127,8 @@ namespace Zellige.UI
 
             var templates = UiKit.Rect("Templates", root, Vector2.zero, Vector2.zero);
             cardTemplate = CardView.BuildTemplate(templates);
+
+            QuitDialog.Build(root);
         }
 
         /// <summary>

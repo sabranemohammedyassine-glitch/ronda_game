@@ -32,7 +32,7 @@ The audit found **no implemented rule that contradicts the evidence**. The criti
 | ID | Mechanic | Gate (must be answered first) | Proposed design once the gate is passed | Size |
 |---|---|---|---|---|
 | **B-0** | **Capture model: obligation and automatic capture** (#16–18) | **E-1** (observation) and owner decision D-G-06 / D-G-07 (doc 01 §5 Q1) | **Obligation:** if the reference forces captures, set `MustCapture = true` (already implemented: engine, UI and AI already respect `GetLegalCards`). Then add a UI cue explaining why a card is refused. **Optional capture:** if the reference allows dropping a matching card, that is a **model change** (table becomes a multiset; capture rule for duplicates needed, P2 Q1). Re-plan before coding. | XS (obligation) / L (optional capture) |
-| **B-1** | **Catch** (#35) | Owner decision (doc 01 §5 Q4), then **E-7** for details: (a) Is Catch in the MVP? (b) May Nadia hide pairs? Without that, the human can never catch her. (c) Does Nadia catch the human? (d) Lockout scope: deal or deck? (e) Value of a hidden tringla: 1 or 5? | **Engine:** `Catch(seat, target, rank)` command, allowed after the window closes. Uses the evidence rule `catchEvidence = playedThisDeal` (default, M-40) and `catchLockout` / `catchValueTringla` flags; new `ScoreReason.Catch`; events for success and failure. **AI:** a policy to catch when the human has played a rank twice without announcing, plus optionally hiding a weak pair (probability flag). **UI:** a catch control on Nadia's panel with a rank picker (UI work, separate task). | M (engine and AI) + M (UI) |
+| **B-1** (investigated 2026-11-17, see `05_catch_specification.md`; not implemented) | **Catch** (#35) | Owner decision (doc 01 §5 Q4), then **E-7** for details: (a) Is Catch in the MVP? (b) May Nadia hide pairs? Without that, the human can never catch her. (c) Does Nadia catch the human? (d) Lockout scope: deal or deck? (e) Value of a hidden tringla: 1 or 5? | **Engine:** `Catch(seat, target, rank)` command, allowed after the window closes. Uses the evidence rule `catchEvidence = playedThisDeal` (default, M-40) and `catchLockout` / `catchValueTringla` flags; new `ScoreReason.Catch`; events for success and failure. **AI:** a policy to catch when the human has played a rank twice without announcing, plus optionally hiding a weak pair (probability flag). **UI:** a catch control on Nadia's panel with a rank picker (UI work, separate task). | M (engine and AI) + M (UI) |
 | **B-2** | **Per-pair announcement choice for the human** (#32) | Only meaningful once **B-1** exists: without Catch, announcing everything is never worse than hiding, except that it hands the opponent bonus points. Owner decision. | Button opens a small choice when several ranks are eligible; engine already supports per-rank `Announce`. **UI change**: separate task, outside this rules phase. | S |
 | **B-3** | **Announcement window and credit timing** (#31) | **E-2** and owner decision (doc 01 §5 Q2) | Keep the play-count window for the local MVP. Add `AnnounceCredit = atWindowClose | immediate` if E-2 shows immediate crediting. Add a time-based window only if the owner wants reference parity. Contest scoring is unaffected either way. | S (flag) / M (timer) |
 
@@ -65,6 +65,15 @@ Not to be implemented in this MVP:
 The engine's `PlayerCount = 2` assumption stays.
 
 ---
+
+## Status update — M2 (2026-11-17)
+
+| Item | Status |
+|---|---|
+| Android Back → "Quit Zellige?" confirmation | **Done.** `Scripts/UI/QuitDialog.cs`, added to the saved scene in place (39 objects added, 1 changed). 5 EditMode tests; Editor Play Mode verified. Device test pending (no phone connected via adb). |
+| B-1 Catch | **Investigated, not implemented.** `05_catch_specification.md`: confirmed facts, unknowns UK-1…UK-11, owner decisions D-1…D-4, observations O-1…O-7. |
+| A-5 test fixture | **Designed** in `06_test_fixture_and_rules_config.md` Part C (internal factory + `InternalsVisibleTo` the test assembly; no production controls). |
+| A-2 configurable uncertain rules | **Designed** in `06_test_fixture_and_rules_config.md` Part D: 10 hard-coded assumptions (H-1…H-10), flat `RulesConfig` fields with current defaults. |
 
 ## E. Recommended order
 

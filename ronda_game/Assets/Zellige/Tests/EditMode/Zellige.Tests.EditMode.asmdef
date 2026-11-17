@@ -1,7 +1,7 @@
 {
     "name": "Zellige.Tests.EditMode",
     "rootNamespace": "Zellige.Tests",
-    "references": ["Zellige.Core", "Zellige.AI", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+    "references": ["Zellige.Core", "Zellige.AI", "Zellige.Game", "UnityEngine.UI", "Unity.TextMeshPro", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "overrideReferences": true,

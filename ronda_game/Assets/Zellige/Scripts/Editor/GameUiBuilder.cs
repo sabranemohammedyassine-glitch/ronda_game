@@ -74,6 +74,43 @@ namespace Zellige.EditorTools
             return screen;
         }
 
+        /// <summary>
+        /// Adds the quit confirmation to the Game UI already saved in the scene, without
+        /// rebuilding anything else (so hand edits and object IDs are kept). Does nothing if the
+        /// scene already has one. New builds made with "Build or Refresh Game UI" include it.
+        /// </summary>
+        [MenuItem("Zellige/Add Quit Dialog to Game UI")]
+        public static QuitDialog AddQuitDialog()
+        {
+            if (EditorApplication.isPlaying || SceneManager.GetActiveScene().path != ScenePath)
+            {
+                Debug.LogError("Zellige: open " + ScenePath + " in Edit Mode before adding the quit dialog.");
+                return null;
+            }
+            QuitDialog[] existing = Object.FindObjectsOfType<QuitDialog>(true);
+            if (existing.Length > 0)
+            {
+                Debug.Log("Zellige: the Game UI already has a quit dialog.");
+                Selection.activeGameObject = existing[0].gameObject;
+                return existing[0];
+            }
+            GameScreen screen = Object.FindObjectOfType<GameScreen>(true);
+            if (screen == null)
+            {
+                Debug.LogError("Zellige: no Game UI in the scene. Run Zellige > Build or Refresh Game UI first.");
+                return null;
+            }
+
+            QuitDialog dialog = QuitDialog.Build(screen.transform);
+            Undo.RegisterCreatedObjectUndo(dialog.gameObject, "Add Quit Dialog");
+            Scene scene = SceneManager.GetActiveScene();
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Selection.activeGameObject = dialog.gameObject;
+            Debug.Log("Zellige: quit dialog added to " + ScenePath);
+            return dialog;
+        }
+
         private static bool OpenGameScene()
         {
             if (SceneManager.GetActiveScene().path == ScenePath) return true;
